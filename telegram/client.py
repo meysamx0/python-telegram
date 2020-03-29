@@ -16,6 +16,7 @@ from telegram import VERSION
 from telegram.utils import AsyncResult
 from telegram.tdjson import TDJson
 from telegram.worker import BaseWorker, SimpleWorker
+from telegram.proxy import BaseProxy
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +44,7 @@ class Telegram:
         login: bool = False,
         default_workers_queue_size: int = 1000,
         tdlib_verbosity: int = 2,
-        proxy_server: str = '',
-        proxy_port: int = 0,
-        proxy_type: Optional[Dict[str, str]] = None,
+        proxy: Optional[BaseProxy] = None,
         use_secret_chats: bool = True,
     ) -> None:
         """
@@ -76,9 +75,7 @@ class Telegram:
         self.application_version = application_version
         self.use_message_database = use_message_database
         self._queue_put_timeout = 10
-        self.proxy_server = proxy_server
-        self.proxy_port = proxy_port
-        self.proxy_type = proxy_type
+        self.proxy = proxy
         self.use_secret_chats = use_secret_chats
 
         if not self.bot_token and not self.phone:
@@ -470,8 +467,6 @@ class Telegram:
         Must be called before any other call.
         It sends initial params to the tdlib, sets database encryption key, etc.
         """
-        if self.proxy_server:
-            self._send_add_proxy()
 
         authorization_state = None
         actions = {
@@ -490,6 +485,16 @@ class Telegram:
 
         while not self._authorized:
             logger.info('[login] current authorization state: %s', authorization_state)
+
+            # right after sending database encryption key,
+            # we can set proxy
+            # todo: don't do it twice
+            if authorization_state in (
+                'authorizationStateWaitPhoneNumber',
+                'authorizationStateReady',
+            ):
+                self._send_add_proxy_if_set()
+
             result = actions[authorization_state]()
 
             if result:
@@ -563,16 +568,18 @@ class Telegram:
 
         return self._send_data(data, result_id='updateAuthorizationState')
 
-    def _send_add_proxy(self) -> AsyncResult:
-        logger.info('Sending addProxy')
-        data = {
-            '@type': 'addProxy',
-            'server': self.proxy_server,
-            'port': self.proxy_port,
-            'enable': True,
-            'type': self.proxy_type,
-        }
-        return self._send_data(data, result_id='setProxy')
+    def _send_add_proxy_if_set(self) -> None:
+        if self.proxy:
+            logger.info('Sending addProxy')
+
+            data = {
+                '@type': 'addProxy',
+                'server': self.proxy.server,
+                'port': self.proxy.port,
+                'enable': True,
+                'type': self.proxy.get_type_object(),
+            }
+            self._send_data(data, result_id='addProxy', block=True)
 
     def _send_bot_token(self) -> AsyncResult:
         logger.info('Sending bot token')

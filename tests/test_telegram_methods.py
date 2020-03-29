@@ -1,10 +1,12 @@
 import pytest
 
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from telegram import VERSION
 from telegram.utils import AsyncResult
 from telegram.client import Telegram, MESSAGE_HANDLER_TYPE
+from telegram.proxy import SOCKS5Proxy
+
 
 API_ID = 1
 API_HASH = 'hash'
@@ -379,3 +381,32 @@ class TestTelegram__login:
         telegram.login()
 
         assert telegram._tdjson.send.call_count == 0
+
+
+class TestTelegram__send_add_proxy_if_set:
+    def test_without_proxy(self, telegram):
+        assert telegram.proxy is None
+        telegram._send_data = Mock()
+
+        telegram._send_add_proxy_if_set()
+
+        assert telegram._send_data.send.call_count == 0
+
+    def test_with_socks5_proxy(self, telegram):
+        proxy = SOCKS5Proxy(server='localhost', port=1080, username='u', password='p',)
+
+        telegram.proxy = proxy
+        telegram._send_data = Mock()
+
+        telegram._send_add_proxy_if_set()
+
+        exp_data = {
+            '@type': 'addProxy',
+            'server': proxy.server,
+            'port': proxy.port,
+            'enable': True,
+            'type': proxy.get_type_object(),
+        }
+        telegram._send_data.assert_called_once_with(
+            exp_data, block=True, result_id='addProxy'
+        )

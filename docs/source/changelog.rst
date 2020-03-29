@@ -2,6 +2,10 @@
 Changelog
 =========
 
+[0.13.0] - 2020-03-29
+
+- Proxy support changes: a new class has been added: ``telegram.proxy.Proxy``. See :ref:`proxy` for details.
+
 [0.12.0] - 2020-03-29
 
 - New example: ``examples/clear_group_messages.py`` (thanks to @h4x3rotab)
